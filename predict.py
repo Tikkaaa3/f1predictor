@@ -13,20 +13,8 @@ df["position"] = df["position"].replace("\\N", np.nan)
 df = df[df["position"].notna()]
 df["position"] = df["position"].astype(int)
 
-
-# ------------------ Map Finishing Position to Class ------------------
-def position_to_class(pos):
-    if pos <= 3:
-        return 0  # Podium
-    elif pos <= 10:
-        return 1  # Points finish
-    elif pos <= 15:
-        return 2  # Finished no points
-    else:
-        return 3  # DNF / Low positions
-
-
-df["position_class"] = df["position"].apply(position_to_class)
+# ------------------ Create Binary Target: Podium or Not ------------------
+df["podium"] = (df["position"] <= 3).astype(int)
 
 
 # ------------------ Convert Fastest Lap Time ------------------
@@ -48,7 +36,7 @@ df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
 df["team_points"] = pd.to_numeric(df["team_points"], errors="coerce")
 df["position_qualifying"] = pd.to_numeric(df["position_qualifying"], errors="coerce")
 
-# ------------------ Drop Rows with Any Missing Data ------------------
+# ------------------ Define Features ------------------
 features = [
     "raceId",
     "driverId",
@@ -56,14 +44,12 @@ features = [
     "grid",
     "fastestLapTime",
     "rank",
-    "laps",
     "statusId",
     "position_qualifying",
     "team_points",
-    "circuit_type",
 ]
 
-df = df[features + ["position_class"]].dropna()
+df = df[features + ["podium"]].dropna()
 
 # ------------------ Encode Categorical Columns ------------------
 le_dict = {}
@@ -72,12 +58,9 @@ for col in ["raceId", "driverId", "constructorId", "statusId"]:
     df[col] = le.fit_transform(df[col])
     le_dict[col] = le
 
-# Encode circuit_type (permanent/street)
-df["circuit_type"] = LabelEncoder().fit_transform(df["circuit_type"])
-
-# ------------------ Model Inputs ------------------
+# ------------------ Prepare Inputs and Target ------------------
 X = df[features]
-y = df["position_class"]
+y = df["podium"]
 
 # ------------------ Train/Test Split ------------------
 X_train, X_test, y_train, y_test = train_test_split(
@@ -86,15 +69,17 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 # ------------------ Train XGBoost Model ------------------
 model = xgb.XGBClassifier(
-    objective="multi:softmax", num_class=y.nunique(), eval_metric="merror", verbosity=1
+    objective="binary:logistic",
+    eval_metric="logloss",
+    verbosity=1,
 )
 
 model.fit(X_train, y_train)
 
-# ------------------ Evaluate ------------------
+# ------------------ Evaluate Model ------------------
 y_pred = model.predict(X_test)
-acc = accuracy_score(y_test, y_pred)
 
+acc = accuracy_score(y_test, y_pred)
 print(f"\nAccuracy: {acc:.4f}\n")
 print("Classification Report:")
-print(classification_report(y_test, y_pred, zero_division=0))
+print(classification_report(y_test, y_pred))
