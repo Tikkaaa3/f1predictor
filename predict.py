@@ -75,6 +75,7 @@ model = xgb.XGBClassifier(
 )
 
 model.fit(X_train, y_train)
+model.save_model("xgb_model.json")
 
 # ------------------ Evaluate Model ------------------
 y_pred = model.predict(X_test)
@@ -83,3 +84,8 @@ acc = accuracy_score(y_test, y_pred)
 print(f"\nAccuracy: {acc:.4f}\n")
 print("Classification Report:")
 print(classification_report(y_test, y_pred))
+
+import joblib
+
+# ------------------ Save Label Encoders ------------------
+joblib.dump(le_dict, "label_encoders.pkl")
