@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 # ------------------ Load Clean Dataset ------------------
-df = pd.read_csv("merged_f1_data.csv")
+df = pd.read_csv("merged_f1_data_with_qualifying_position_and_team_points.csv")
 
 # ------------------ Clean Core Dataset ------------------
 df["position"] = df["position"].replace("\\N", np.nan)
@@ -46,7 +46,7 @@ if df["fastestLapTime"].dtype == object:
 # ------------------ Fix and Clean Types ------------------
 df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
 df["team_points"] = pd.to_numeric(df["team_points"], errors="coerce")
-df["qualifying_position"] = pd.to_numeric(df["qualifying_position"], errors="coerce")
+df["position_qualifying"] = pd.to_numeric(df["position_qualifying"], errors="coerce")
 
 # ------------------ Drop Rows with Any Missing Data ------------------
 features = [
@@ -58,7 +58,7 @@ features = [
     "rank",
     "laps",
     "statusId",
-    "qualifying_position",
+    "position_qualifying",
     "team_points",
     "circuit_type",
 ]

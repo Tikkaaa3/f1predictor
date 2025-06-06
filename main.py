@@ -2,7 +2,7 @@ import kagglehub
 import pandas as pd
 from kagglehub import KaggleDatasetAdapter
 
-# Load datasets using kagglehub
+# ------------------ Load datasets ------------------
 races = kagglehub.load_dataset(
     KaggleDatasetAdapter.PANDAS,
     "rohanrao/formula-1-world-championship-1950-2020",
@@ -34,33 +34,72 @@ circuits = kagglehub.load_dataset(
     "circuits.csv",
 )
 
-# Merge datasets on keys
+# ------------------ Merge base datasets ------------------
 merged = results.merge(races, on="raceId", suffixes=("", "_race"))
 merged = merged.merge(drivers, on="driverId", suffixes=("", "_driver"))
 merged = merged.merge(constructors, on="constructorId", suffixes=("", "_constructor"))
 
-# Merge qualifying position only (use left join to keep all results)
+# ------------------ Add qualifying position ------------------
 qualifying_subset = qualifying[["raceId", "driverId", "position"]].rename(
     columns={"position": "position_qualifying"}
 )
 merged = merged.merge(qualifying_subset, on=["raceId", "driverId"], how="left")
-
-merged = merged.merge(circuits, on="circuitId", suffixes=("", "_circuit"))
-
-# Handle missing qualifying positions by filling with a distinct number (e.g., 99)
 merged["position_qualifying"] = merged["position_qualifying"].fillna(99).astype(int)
 
-# Columns to drop to clean dataset
+
+def classify_circuit_type(name):
+    street_circuits = [
+        "Monaco",
+        "Singapore",
+        "Baku",
+        "Melbourne",
+        "Montréal",
+        "Azerbaijan",
+    ]
+    for street in street_circuits:
+        if street.lower() in name.lower():
+            return "street"
+    return "permanent"
+
+
+circuits["circuit_type"] = circuits["name"].apply(classify_circuit_type)
+
+# Now merge
+merged = merged.merge(
+    circuits[["circuitId", "circuit_type"]], on="circuitId", how="left"
+)
+
+# ------------------ Add circuit info ------------------
+# merged = merged.merge(circuits, on="circuitId", suffixes=("", "_circuit"))
+
+# ------------------ Calculate team_points ------------------
+results_team_points = results.merge(races[["raceId", "year", "date"]], on="raceId")
+results_team_points["date"] = pd.to_datetime(results_team_points["date"])
+results_team_points = results_team_points.sort_values(
+    by=["constructorId", "year", "date"]
+)
+
+# Cumulative points for team up to and including each race
+results_team_points["team_points"] = results_team_points.groupby(
+    ["constructorId", "year"]
+)["points"].cumsum()
+
+# Extract last team points per race
+team_points_per_race = results_team_points[
+    ["raceId", "constructorId", "team_points"]
+].drop_duplicates(subset=["raceId", "constructorId"], keep="last")
+
+# Merge into main dataset
+merged = merged.merge(team_points_per_race, on=["raceId", "constructorId"], how="left")
+
+# ------------------ Clean unnecessary columns ------------------
 drop_cols = [
-    # URLs
     "url",
     "url_driver",
     "url_constructor",
     "url_circuit",
-    # Qualifying and session IDs not needed if focusing on race results
     "constructorId_qualifying",
     "qualifyId",
-    # Qualifying session details (times/dates)
     "fp1_date",
     "fp1_time",
     "fp2_date",
@@ -71,15 +110,12 @@ drop_cols = [
     "quali_time",
     "sprint_date",
     "sprint_time",
-    # Driver-specific redundant or descriptive columns
-    "positionText",  # usually redundant with numeric positions
-    "number_driver",  # redundant with 'number'
-    # Columns related to detailed qualifying times removed since we only keep position
+    "positionText",
+    "number_driver",
     "number_qualifying",
     "q1",
     "q2",
     "q3",
-    # Circuit redundant details
     "circuitRef",
     "name_circuit",
     "location",
@@ -87,18 +123,15 @@ drop_cols = [
     "lat",
     "lng",
     "alt",
-    # Driver personal info
     "driverRef",
     "code",
     "forename",
     "surname",
     "dob",
     "nationality",
-    # Constructor personal info
     "constructorRef",
     "name_constructor",
     "nationality_constructor",
-    # Race time details
     "time",
     "time_race",
     "round",
@@ -106,10 +139,10 @@ drop_cols = [
 
 df = merged.drop(columns=[col for col in drop_cols if col in merged.columns])
 
-# Export clean dataset for ML training
-df.to_csv("merged_f1_data_with_qualifying_position.csv", index=False)
+# ------------------ Export cleaned dataset ------------------
+df.to_csv("merged_f1_data_with_qualifying_position_and_team_points.csv", index=False)
 
-# Also save original raw datasets if needed
+# Save raw files
 races.to_csv("races.csv", index=False)
 results.to_csv("results.csv", index=False)
 drivers.to_csv("drivers.csv", index=False)
